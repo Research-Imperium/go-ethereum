@@ -8,7 +8,7 @@ import (
 	"time"
 )
 import "gorm.io/gorm"
-import "gorm.io/driver/sqlite"
+import "gorm.io/driver/postgres"
 
 type SpyBlock struct {
 	gorm.Model
@@ -68,15 +68,24 @@ func NewSpy() *Spy {
 // execute is called on initialization
 func (w *Spy) execute() {
 	// initiate all databases
-	db, err := gorm.Open(sqlite.Open("spy.sqlite"), &gorm.Config{})
+	dsn := "host=localhost user=postgres password=password dbname=postgres port=5433 sslmode=disable"
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		panic("failed to connect database")
 	}
 
-	db.AutoMigrate(&SpyBlock{})
-	db.AutoMigrate(&SpyTransaction{})
-	db.AutoMigrate(&SpyPeer{})
-	db.AutoMigrate(&SpyTransactionContent{})
+	if db.AutoMigrate(&SpyBlock{}) != nil {
+		panic("Failed to migrate db")
+	}
+	if db.AutoMigrate(&SpyTransaction{}) != nil {
+		panic("Failed to migrate db")
+	}
+	if db.AutoMigrate(&SpyPeer{}) != nil {
+		panic("Failed to migrate db")
+	}
+	if db.AutoMigrate(&SpyTransactionContent{}) != nil {
+		panic("Failed to migrate db")
+	}
 
 	for {
 		select {
