@@ -804,7 +804,7 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 			tx := pm.txpool.Get(hash)
 
 			// report to spy
-			pm.spy.HandleTxMsg(p.id, msg, tx.Hash().Hex())
+			pm.spy.HandleTxMsg(p.id, msg, hash.Hex())
 
 			if tx == nil {
 				continue
