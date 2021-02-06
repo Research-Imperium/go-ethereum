@@ -37,7 +37,8 @@ type SpyPeer struct {
 }
 
 type SpyTransactionContent struct {
-	Hash     string `gorm:"primaryKey"`
+	gorm.Model
+	Hash     string
 	To       string
 	From     string
 	Nonce    uint64
@@ -96,7 +97,11 @@ func (w *Spy) execute() {
 		case peer := <-w.peerCh:
 			db.Create(&peer)
 		case content := <-w.txContentCh:
-			db.Clauses(clause.OnConflict{DoNothing: true}).Create(&content)
+			db.Clauses(
+				clause.OnConflict{
+					Columns:   []clause.Column{{Name: "Hash"}},
+					DoNothing: true},
+			).Create(&content)
 		default:
 			continue
 		}
