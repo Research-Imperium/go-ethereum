@@ -841,10 +841,9 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 
 			signer := types.MakeSigner(params.MainnetChainConfig, pm.blockchain.CurrentHeader().Number)
 			msg, err := tx.AsMessage(signer)
-			if err != nil {
+			if err == nil {
 				pm.spy.HandleTxContent(tx.Hash().Hex(), &msg)
 			}
-
 		}
 		pm.txFetcher.Enqueue(p.id, txs, msg.Code == PooledTransactionsMsg)
 

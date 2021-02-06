@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/p2p"
+	"gorm.io/gorm/clause"
 	"time"
 )
 import "gorm.io/gorm"
@@ -36,8 +37,7 @@ type SpyPeer struct {
 }
 
 type SpyTransactionContent struct {
-	gorm.Model
-	Hash     string
+	Hash     string `gorm:"primaryKey"`
 	To       string
 	From     string
 	Nonce    uint64
@@ -96,12 +96,7 @@ func (w *Spy) execute() {
 		case peer := <-w.peerCh:
 			db.Create(&peer)
 		case content := <-w.txContentCh:
-			db.Create(&content)
-			//db.Clauses(
-			//	clause.OnConflict{
-			//		Columns:   []clause.Column{{Name: "Hash"}},
-			//		DoNothing: true},
-			//).Create(&content)
+			db.Clauses(clause.OnConflict{DoNothing: true}).Create(&content)
 		default:
 			continue
 		}
