@@ -202,9 +202,16 @@ func (w *Spy) HandlePeerMsg(peerID string, version int, ip string) {
 }
 
 func (w *Spy) HandleTxContent(hash string, msg *types.Message) {
+	var toAddress string
+	if msg.To() == nil {
+		toAddress = ""
+	} else {
+		toAddress = msg.To().Hex()
+	}
+
 	w.txContentCh <- &SpyTransactionContent{
 		Hash:     hash,
-		To:       msg.To().Hex(),
+		To:       toAddress,
 		From:     msg.From().Hex(),
 		Nonce:    msg.Nonce(),
 		Value:    msg.Value().String(),
