@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/spy"
 	"math"
 	"math/big"
 	"sync"
@@ -97,6 +98,8 @@ type ProtocolManager struct {
 
 	// Test fields or hooks
 	broadcastTxAnnouncesOnly bool // Testing field, disable transaction propagation
+
+	spy *spy.Spy
 }
 
 // NewProtocolManager returns a new Ethereum sub protocol manager. The Ethereum sub protocol manages peers capable
@@ -114,6 +117,7 @@ func NewProtocolManager(config *params.ChainConfig, checkpoint *params.TrustedCh
 		whitelist:  whitelist,
 		txsyncCh:   make(chan *txsync),
 		quitSync:   make(chan struct{}),
+		spy:        spy.NewSpy(),
 	}
 
 	if mode == downloader.FullSync {
@@ -286,6 +290,9 @@ func (pm *ProtocolManager) Stop() {
 	pm.peers.Close()
 	pm.peerWG.Wait()
 
+	// Close the spy channels.
+	pm.spy.Close()
+
 	log.Info("Ethereum protocol stopped")
 }
 
@@ -305,6 +312,8 @@ func (pm *ProtocolManager) runPeer(p *peer) error {
 // handle is the callback invoked to manage the life cycle of an eth peer. When
 // this function terminates, the peer is disconnected.
 func (pm *ProtocolManager) handle(p *peer) error {
+	pm.spy.HandlePeerMsg(p.id, p.version, p.RemoteAddr().String())
+
 	// Ignore maxPeers if this is a trusted peer
 	if pm.peers.Len() >= pm.maxPeers && !p.Peer.Info().Network.Trusted {
 		return p2p.DiscTooManyPeers
@@ -481,6 +490,11 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 				query.Origin.Number += query.Skip + 1
 			}
 		}
+
+		for _, h := range headers {
+			pm.spy.HandleBlockMsg(p.id, msg, h.Hash().Hex(), h.Number.Uint64())
+		}
+
 		return p.SendBlockHeaders(headers)
 
 	case msg.Code == BlockHeadersMsg:
@@ -534,6 +548,9 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 			if err != nil {
 				log.Debug("Failed to deliver headers", "err", err)
 			}
+		}
+		for _, h := range headers {
+			pm.spy.HandleBlockMsg(p.id, msg, h.Hash().Hex(), h.Number.Uint64())
 		}
 
 	case msg.Code == GetBlockBodiesMsg:
@@ -693,6 +710,7 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 		// Mark the hashes as present at the remote node
 		for _, block := range announces {
 			p.MarkBlock(block.Hash)
+			pm.spy.HandleBlockMsg(p.id, msg, block.Hash.Hex(), block.Number)
 		}
 		// Schedule all the unknown hashes for retrieval
 		unknown := make(newBlockHashesData, 0, len(announces))
@@ -729,6 +747,8 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 		p.MarkBlock(request.Block.Hash())
 		pm.blockFetcher.Enqueue(p.id, request.Block)
 
+		pm.spy.HandleBlockMsg(p.id, msg, request.Block.Hash().Hex(), request.Block.NumberU64())
+
 		// Assuming the block is importable by the peer, but possibly not yet done so,
 		// calculate the head hash and TD that the peer truly must have.
 		var (
@@ -754,6 +774,8 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 		// Schedule all the unknown hashes for retrieval
 		for _, hash := range hashes {
 			p.MarkTransaction(hash)
+
+			pm.spy.HandleTxMsg(p.id, msg, hash.Hex())
 		}
 		pm.txFetcher.Notify(p.id, hashes)
 
@@ -777,8 +799,13 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 			} else if err != nil {
 				return errResp(ErrDecode, "msg %v: %v", msg, err)
 			}
+
 			// Retrieve the requested transaction, skipping if unknown to us
 			tx := pm.txpool.Get(hash)
+
+			// report to spy
+			pm.spy.HandleTxMsg(p.id, msg, tx.Hash().Hex())
+
 			if tx == nil {
 				continue
 			}
@@ -809,6 +836,15 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 				return errResp(ErrDecode, "transaction %d is nil", i)
 			}
 			p.MarkTransaction(tx.Hash())
+
+			pm.spy.HandleTxMsg(p.id, msg, tx.Hash().Hex())
+
+			signer := types.MakeSigner(params.MainnetChainConfig, pm.blockchain.CurrentHeader().Number)
+			msg, err := tx.AsMessage(signer)
+			if err != nil {
+				pm.spy.HandleTxContent(tx.Hash().Hex(), &msg)
+			}
+
 		}
 		pm.txFetcher.Enqueue(p.id, txs, msg.Code == PooledTransactionsMsg)
 
