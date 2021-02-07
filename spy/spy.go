@@ -11,39 +11,38 @@ import "gorm.io/gorm"
 import "gorm.io/driver/postgres"
 
 type SpyBlock struct {
-	gorm.Model
+	ID           uint `gorm:"primarykey"`
 	PeerID       string
 	Hash         string
-	Code         uint64
-	CodeText     string
+	Code         uint
 	ReceivedTime time.Time
-	BlockNumber  uint64
+	BlockNumber  uint
 }
 
 type SpyTransaction struct {
-	gorm.Model
+	ID           uint `gorm:"primarykey"`
 	PeerID       string
 	Hash         string
-	Code         uint64
-	CodeText     string
+	Code         uint
 	ReceivedTime time.Time
 }
 
 type SpyPeer struct {
-	gorm.Model
-	PeerID  string
-	Version int
-	IP      string
+	ID           uint `gorm:"primarykey"`
+	PeerID       string
+	Version      int
+	IP           string
+	ReceivedTime time.Time
 }
 
 type SpyTransactionContent struct {
 	Hash     string `gorm:"primaryKey"`
 	To       string
 	From     string
-	Nonce    uint64
+	Nonce    uint
 	Value    string
 	GasPrice string
-	Gas      uint64
+	Gas      uint
 	Data     string
 }
 
@@ -176,10 +175,9 @@ func (w *Spy) HandleBlockMsg(peerID string, msg p2p.Msg, hash string, blockNumbe
 	w.blockCh <- &SpyBlock{
 		PeerID:       peerID,
 		Hash:         hash,
-		Code:         msg.Code,
-		CodeText:     GetMsgCodeText(msg),
+		Code:         uint(msg.Code),
 		ReceivedTime: msg.ReceivedAt,
-		BlockNumber:  blockNumber,
+		BlockNumber:  uint(blockNumber),
 	}
 }
 
@@ -187,17 +185,17 @@ func (w *Spy) HandleTxMsg(peerID string, msg p2p.Msg, hash string) {
 	w.txCh <- &SpyTransaction{
 		PeerID:       peerID,
 		Hash:         hash,
-		Code:         msg.Code,
-		CodeText:     GetMsgCodeText(msg),
+		Code:         uint(msg.Code),
 		ReceivedTime: msg.ReceivedAt,
 	}
 }
 
 func (w *Spy) HandlePeerMsg(peerID string, version int, ip string) {
 	w.peerCh <- &SpyPeer{
-		PeerID:  peerID,
-		Version: version,
-		IP:      ip,
+		PeerID:       peerID,
+		Version:      version,
+		IP:           ip,
+		ReceivedTime: time.Now(),
 	}
 }
 
@@ -213,10 +211,10 @@ func (w *Spy) HandleTxContent(hash string, msg *types.Message) {
 		Hash:     hash,
 		To:       toAddress,
 		From:     msg.From().Hex(),
-		Nonce:    msg.Nonce(),
+		Nonce:    uint(msg.Nonce()),
 		Value:    msg.Value().String(),
 		GasPrice: msg.GasPrice().String(),
-		Gas:      msg.Gas(),
+		Gas:      uint(msg.Gas()),
 		Data:     hex.EncodeToString(msg.Data()),
 	}
 }
