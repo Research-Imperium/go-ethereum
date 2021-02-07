@@ -13,7 +13,7 @@ import "gorm.io/driver/postgres"
 type SpyBlock struct {
 	ID           uint `gorm:"primarykey"`
 	PeerID       string
-	Hash         string
+	Hash         string `gorm:"index"`
 	Code         uint
 	ReceivedTime time.Time
 	BlockNumber  uint
@@ -22,7 +22,7 @@ type SpyBlock struct {
 type SpyTransaction struct {
 	ID           uint `gorm:"primarykey"`
 	PeerID       string
-	Hash         string
+	Hash         string `gorm:"index"`
 	Code         uint
 	ReceivedTime time.Time
 }
@@ -86,12 +86,24 @@ func (w *Spy) execute() {
 		panic("Failed to migrate db")
 	}
 
+	max := int64(20)
+
 	for {
 		select {
 		case block := <-w.blockCh:
-			db.Create(&block)
+			var result []SpyBlock
+			var count int64
+			db.Where("Hash = ?", block.Hash).Find(&result).Count(&count)
+			if count < max {
+				db.Create(&block)
+			}
 		case tx := <-w.txCh:
-			db.Create(&tx)
+			var result []SpyTransaction
+			var count int64
+			db.Where("Hash = ?", tx.Hash).Find(&result).Count(&count)
+			if count < max {
+				db.Create(&tx)
+			}
 		case peer := <-w.peerCh:
 			db.Create(&peer)
 		case content := <-w.txContentCh:
