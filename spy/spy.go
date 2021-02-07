@@ -2,6 +2,7 @@ package spy
 
 import (
 	"encoding/hex"
+	"fmt"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/p2p"
 	"gorm.io/gorm/clause"
@@ -93,14 +94,16 @@ func (w *Spy) execute() {
 		case block := <-w.blockCh:
 			var result []SpyBlock
 			var count int64
-			db.Where("Hash = ?", block.Hash).Find(&result).Count(&count)
+			db.Where("hash = ?", block.Hash).Find(&result).Count(&count)
+			fmt.Println(result, count)
 			if count < max {
 				db.Create(&block)
 			}
 		case tx := <-w.txCh:
 			var result []SpyTransaction
 			var count int64
-			db.Where("Hash = ?", tx.Hash).Find(&result).Count(&count)
+			db.Where("hash = ?", tx.Hash).Find(&result).Count(&count)
+			fmt.Println(result, count)
 			if count < max {
 				db.Create(&tx)
 			}
