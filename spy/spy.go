@@ -10,7 +10,7 @@ import (
 import "gorm.io/gorm"
 import "gorm.io/driver/postgres"
 
-type SpyBlock struct {
+type EthereumBlock struct {
 	ID           uint `gorm:"primarykey"`
 	PeerID       string
 	Hash         string `gorm:"index"`
@@ -19,7 +19,7 @@ type SpyBlock struct {
 	BlockNumber  uint
 }
 
-type SpyTransaction struct {
+type EthereumTransaction struct {
 	ID           uint `gorm:"primarykey"`
 	PeerID       string
 	Hash         string `gorm:"index"`
@@ -27,15 +27,7 @@ type SpyTransaction struct {
 	ReceivedTime time.Time
 }
 
-type SpyPeer struct {
-	ID           uint `gorm:"primarykey"`
-	PeerID       string
-	Version      int
-	IP           string
-	ReceivedTime time.Time
-}
-
-type SpyTransactionContent struct {
+type EthereumTransactionContent struct {
 	Hash     string `gorm:"primaryKey"`
 	To       string
 	From     string
@@ -46,19 +38,27 @@ type SpyTransactionContent struct {
 	Data     string
 }
 
+type EthereumPeer struct {
+	ID           uint `gorm:"primarykey"`
+	PeerID       string
+	Version      int
+	IP           string
+	ReceivedTime time.Time
+}
+
 type Spy struct {
-	peerCh      chan *SpyPeer
-	blockCh     chan *SpyBlock
-	txCh        chan *SpyTransaction
-	txContentCh chan *SpyTransactionContent
+	peerCh      chan *EthereumPeer
+	blockCh     chan *EthereumBlock
+	txCh        chan *EthereumTransaction
+	txContentCh chan *EthereumTransactionContent
 }
 
 func NewSpy() *Spy {
 	spy := Spy{
-		peerCh:      make(chan *SpyPeer, 1000),
-		blockCh:     make(chan *SpyBlock, 1000),
-		txCh:        make(chan *SpyTransaction, 1000),
-		txContentCh: make(chan *SpyTransactionContent, 1000),
+		peerCh:      make(chan *EthereumPeer, 10000),
+		blockCh:     make(chan *EthereumBlock, 10000),
+		txCh:        make(chan *EthereumTransaction, 10000),
+		txContentCh: make(chan *EthereumTransactionContent, 10000),
 	}
 	go spy.execute()
 	return &spy
@@ -72,37 +72,61 @@ func (w *Spy) execute() {
 	if err != nil {
 		panic("failed to connect database")
 	}
+	if db.AutoMigrate(&EthereumBlock{}) != nil {
+		panic("Failed to migrate db")
+	}
+	if db.AutoMigrate(&EthereumTransaction{}) != nil {
+		panic("Failed to migrate db")
+	}
+	if db.AutoMigrate(&EthereumPeer{}) != nil {
+		panic("Failed to migrate db")
+	}
+	if db.AutoMigrate(&EthereumTransactionContent{}) != nil {
+		panic("Failed to migrate db")
+	}
 
-	if db.AutoMigrate(&SpyBlock{}) != nil {
-		panic("Failed to migrate db")
-	}
-	if db.AutoMigrate(&SpyTransaction{}) != nil {
-		panic("Failed to migrate db")
-	}
-	if db.AutoMigrate(&SpyPeer{}) != nil {
-		panic("Failed to migrate db")
-	}
-	if db.AutoMigrate(&SpyTransactionContent{}) != nil {
-		panic("Failed to migrate db")
-	}
+	// transaction cache
+	var transactionCountCacheHashes []string
+	transactionCountCache := map[string]int64{}
 
 	max := int64(20)
+	maxTransactionCacheCount := 10000
+	batchSize := 1000
+
+	var blockBatch []*EthereumBlock
+	var transactionBatch []*EthereumTransaction
 
 	for {
 		select {
 		case block := <-w.blockCh:
-			var result []SpyBlock
-			var count int64
-			db.Where("hash = ?", block.Hash).Find(&result).Count(&count)
-			if count < max {
-				db.Create(&block)
+			blockBatch = append(blockBatch, block)
+			// batch insert if it is over the batch size
+			if len(blockBatch) > batchSize {
+				db.Create(&blockBatch)
+				blockBatch = []*EthereumBlock{}
 			}
 		case tx := <-w.txCh:
-			var result []SpyTransaction
-			var count int64
-			db.Where("hash = ?", tx.Hash).Find(&result).Count(&count)
-			if count < max {
-				db.Create(&tx)
+			_, exists := transactionCountCache[tx.Hash]
+			if !exists {
+				var result []EthereumTransaction
+				var count int64
+				db.Where("hash = ?", tx.Hash).Find(&result).Count(&count)
+				transactionCountCacheHashes = append(transactionCountCacheHashes, tx.Hash)
+				transactionCountCache[tx.Hash] = count
+				if len(transactionCountCacheHashes) > maxTransactionCacheCount {
+					toDelete := transactionCountCacheHashes[0]
+					transactionCountCacheHashes = transactionCountCacheHashes[1:]
+					delete(transactionCountCache, toDelete)
+				}
+			}
+			if transactionCountCache[tx.Hash] < max {
+				transactionBatch = append(transactionBatch, tx)
+				transactionCountCache[tx.Hash] += 1
+				// batch insert if it is over the batch size
+				if len(transactionBatch) > batchSize {
+					db.Create(&transactionBatch)
+					transactionBatch = []*EthereumTransaction{}
+				}
 			}
 		case peer := <-w.peerCh:
 			db.Create(&peer)
@@ -184,7 +208,7 @@ func GetMsgCodeText(msg p2p.Msg) string {
 }
 
 func (w *Spy) HandleBlockMsg(peerID string, msg p2p.Msg, hash string, blockNumber uint64) {
-	w.blockCh <- &SpyBlock{
+	w.blockCh <- &EthereumBlock{
 		PeerID:       peerID,
 		Hash:         hash,
 		Code:         uint(msg.Code),
@@ -194,7 +218,7 @@ func (w *Spy) HandleBlockMsg(peerID string, msg p2p.Msg, hash string, blockNumbe
 }
 
 func (w *Spy) HandleTxMsg(peerID string, msg p2p.Msg, hash string) {
-	w.txCh <- &SpyTransaction{
+	w.txCh <- &EthereumTransaction{
 		PeerID:       peerID,
 		Hash:         hash,
 		Code:         uint(msg.Code),
@@ -203,7 +227,7 @@ func (w *Spy) HandleTxMsg(peerID string, msg p2p.Msg, hash string) {
 }
 
 func (w *Spy) HandlePeerMsg(peerID string, version int, ip string) {
-	w.peerCh <- &SpyPeer{
+	w.peerCh <- &EthereumPeer{
 		PeerID:       peerID,
 		Version:      version,
 		IP:           ip,
@@ -219,7 +243,7 @@ func (w *Spy) HandleTxContent(hash string, msg *types.Message) {
 		toAddress = msg.To().Hex()
 	}
 
-	w.txContentCh <- &SpyTransactionContent{
+	w.txContentCh <- &EthereumTransactionContent{
 		Hash:     hash,
 		To:       toAddress,
 		From:     msg.From().Hex(),
