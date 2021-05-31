@@ -51,7 +51,7 @@ func TestGetBlockHeadersLes2(t *testing.T) { testGetBlockHeaders(t, 2) }
 func TestGetBlockHeadersLes3(t *testing.T) { testGetBlockHeaders(t, 3) }
 
 func testGetBlockHeaders(t *testing.T, protocol int) {
-	server, tearDown := newServerEnv(t, downloader.MaxHashFetch+15, protocol, nil, false, true, 0)
+	server, tearDown := newServerEnv(t, downloader.MaxHeaderFetch+15, protocol, nil, false, true, 0)
 	defer tearDown()
 
 	bc := server.handler.blockchain
@@ -443,7 +443,7 @@ func testGetCHTProofs(t *testing.T, protocol int) {
 		Type:    htCanonical,
 		TrieIdx: 0,
 		Key:     key,
-		AuxReq:  auxHeader,
+		AuxReq:  htAuxHeader,
 	}}
 	// Send the proof request and verify the response
 	sendRequest(server.peer.app, GetHelperTrieProofsMsg, 42, requestsV2)

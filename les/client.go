@@ -72,6 +72,7 @@ type LightEthereum struct {
 	netRPCService  *ethapi.PublicNetAPI
 
 	p2pServer *p2p.Server
+	p2pConfig *p2p.Config
 }
 
 // New creates an instance of the light client.
@@ -109,14 +110,11 @@ func New(stack *node.Node, config *eth.Config) (*LightEthereum, error) {
 		bloomIndexer:   eth.NewBloomIndexer(chainDb, params.BloomBitsBlocksClient, params.HelperTrieConfirmations),
 		valueTracker:   lpc.NewValueTracker(lespayDb, &mclock.System{}, requestList, time.Minute, 1/float64(time.Hour), 1/float64(time.Hour*100), 1/float64(time.Hour*1000)),
 		p2pServer:      stack.Server(),
+		p2pConfig:      &stack.Config().P2P,
 	}
 	peers.subscribe((*vtSubscription)(leth.valueTracker))
 
-	dnsdisc, err := leth.setupDiscovery()
-	if err != nil {
-		return nil, err
-	}
-	leth.serverPool = newServerPool(lespayDb, []byte("serverpool:"), leth.valueTracker, dnsdisc, time.Second, nil, &mclock.System{}, config.UltraLightServers)
+	leth.serverPool = newServerPool(lespayDb, []byte("serverpool:"), leth.valueTracker, time.Second, nil, &mclock.System{}, config.UltraLightServers)
 	peers.subscribe(leth.serverPool)
 	leth.dialCandidates = leth.serverPool.dialIterator
 
@@ -178,6 +176,19 @@ func New(stack *node.Node, config *eth.Config) (*LightEthereum, error) {
 	stack.RegisterProtocols(leth.Protocols())
 	stack.RegisterLifecycle(leth)
 
+	// Check for unclean shutdown
+	if uncleanShutdowns, discards, err := rawdb.PushUncleanShutdownMarker(chainDb); err != nil {
+		log.Error("Could not update unclean-shutdown-marker list", "error", err)
+	} else {
+		if discards > 0 {
+			log.Warn("Old unclean shutdowns found", "count", discards)
+		}
+		for _, tstamp := range uncleanShutdowns {
+			t := time.Unix(int64(tstamp), 0)
+			log.Warn("Unclean shutdown detected", "booted", t,
+				"age", common.PrettyAge(t))
+		}
+	}
 	return leth, nil
 }
 
@@ -239,7 +250,7 @@ func (s *LightEthereum) APIs() []rpc.API {
 		}, {
 			Namespace: "eth",
 			Version:   "1.0",
-			Service:   filters.NewPublicFilterAPI(s.ApiBackend, true),
+			Service:   filters.NewPublicFilterAPI(s.ApiBackend, true, 5*time.Minute),
 			Public:    true,
 		}, {
 			Namespace: "net",
@@ -286,6 +297,11 @@ func (s *LightEthereum) Protocols() []p2p.Protocol {
 func (s *LightEthereum) Start() error {
 	log.Warn("Light client mode is an experimental feature")
 
+	discovery, err := s.setupDiscovery(s.p2pConfig)
+	if err != nil {
+		return err
+	}
+	s.serverPool.addSource(discovery)
 	s.serverPool.start()
 	// Start bloom request workers.
 	s.wg.Add(bloomServiceThreads)
@@ -313,6 +329,7 @@ func (s *LightEthereum) Stop() error {
 	s.engine.Close()
 	s.pruner.close()
 	s.eventMux.Stop()
+	rawdb.PopUncleanShutdownMarker(s.chainDb)
 	s.chainDb.Close()
 	s.wg.Wait()
 	log.Info("Light ethereum stopped")

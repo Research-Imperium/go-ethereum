@@ -31,7 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/les/flowcontrol"
 	lpc "github.com/ethereum/go-ethereum/les/lespay/client"
 	lps "github.com/ethereum/go-ethereum/les/lespay/server"
@@ -162,9 +161,17 @@ func (p *peerCommons) String() string {
 	return fmt.Sprintf("Peer %s [%s]", p.id, fmt.Sprintf("les/%d", p.version))
 }
 
+// PeerInfo represents a short summary of the `eth` sub-protocol metadata known
+// about a connected peer.
+type PeerInfo struct {
+	Version    int      `json:"version"`    // Ethereum protocol version negotiated
+	Difficulty *big.Int `json:"difficulty"` // Total difficulty of the peer's blockchain
+	Head       string   `json:"head"`       // SHA3 hash of the peer's best owned block
+}
+
 // Info gathers and returns a collection of metadata known about a peer.
-func (p *peerCommons) Info() *eth.PeerInfo {
-	return &eth.PeerInfo{
+func (p *peerCommons) Info() *PeerInfo {
+	return &PeerInfo{
 		Version:    p.version,
 		Difficulty: p.Td(),
 		Head:       fmt.Sprintf("%x", p.Head()),
@@ -334,6 +341,7 @@ type serverPeer struct {
 	onlyAnnounce            bool   // The flag whether the server sends announcement only.
 	chainSince, chainRecent uint64 // The range of chain server peer can serve.
 	stateSince, stateRecent uint64 // The range of state server peer can serve.
+	serveTxLookup           bool   // The server peer can serve tx lookups.
 
 	// Advertised checkpoint fields
 	checkpointNumber uint64                   // The block height which the checkpoint is registered.
@@ -621,6 +629,18 @@ func (p *serverPeer) Handshake(genesis common.Hash, forkid forkid.ID, forkFilter
 		if recv.get("txRelay", nil) != nil {
 			p.onlyAnnounce = true
 		}
+		if p.version >= lpv4 {
+			var recentTx uint
+			if err := recv.get("recentTxLookup", &recentTx); err != nil {
+				return err
+			}
+			// Note: in the current version we only consider the tx index service useful
+			// if it is unlimited. This can be made configurable in the future.
+			p.serveTxLookup = recentTx == txIndexUnlimited
+		} else {
+			p.serveTxLookup = true
+		}
+
 		if p.onlyAnnounce && !p.trusted {
 			return errResp(ErrUselessPeer, "peer cannot serve requests")
 		}
@@ -962,6 +982,20 @@ func (p *clientPeer) freezeClient() {
 // Handshake executes the les protocol handshake, negotiating version number,
 // network IDs, difficulties, head and genesis blocks.
 func (p *clientPeer) Handshake(td *big.Int, head common.Hash, headNum uint64, genesis common.Hash, forkID forkid.ID, forkFilter forkid.Filter, server *LesServer) error {
+	recentTx := server.handler.blockchain.TxLookupLimit()
+	if recentTx != txIndexUnlimited {
+		if recentTx < blockSafetyMargin {
+			recentTx = txIndexDisabled
+		} else {
+			recentTx -= blockSafetyMargin - txIndexRecentOffset
+		}
+	}
+	if server.config.UltraLightOnlyAnnounce {
+		recentTx = txIndexDisabled
+	}
+	if recentTx != txIndexUnlimited && p.version < lpv4 {
+		return errors.New("Cannot serve old clients without a complete tx index")
+	}
 	// Note: clientPeer.headInfo should contain the last head announced to the client by us.
 	// The values announced in the handshake are dummy values for compatibility reasons and should be ignored.
 	p.headInfo = blockInfo{Hash: head, Number: headNum, Td: td}
@@ -974,12 +1008,15 @@ func (p *clientPeer) Handshake(td *big.Int, head common.Hash, headNum uint64, ge
 
 			// If local ethereum node is running in archive mode, advertise ourselves we have
 			// all version state data. Otherwise only recent state is available.
-			stateRecent := uint64(core.TriesInMemory - 4)
+			stateRecent := uint64(core.TriesInMemory - blockSafetyMargin)
 			if server.archiveMode {
 				stateRecent = 0
 			}
 			*lists = (*lists).add("serveRecentState", stateRecent)
 			*lists = (*lists).add("txRelay", nil)
+		}
+		if p.version >= lpv4 {
+			*lists = (*lists).add("recentTxLookup", recentTx)
 		}
 		*lists = (*lists).add("flowControl/BL", server.defParams.BufLimit)
 		*lists = (*lists).add("flowControl/MRR", server.defParams.MinRecharge)

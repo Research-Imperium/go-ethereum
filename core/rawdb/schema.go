@@ -27,8 +27,8 @@ import (
 
 // The fields below define the low level database schema prefixing.
 var (
-	// databaseVerisionKey tracks the current database version.
-	databaseVerisionKey = []byte("DatabaseVersion")
+	// databaseVersionKey tracks the current database version.
+	databaseVersionKey = []byte("DatabaseVersion")
 
 	// headHeaderKey tracks the latest known header's hash.
 	headHeaderKey = []byte("LastHeader")
@@ -57,11 +57,20 @@ var (
 	// snapshotRecoveryKey tracks the snapshot recovery marker across restarts.
 	snapshotRecoveryKey = []byte("SnapshotRecovery")
 
+	// snapshotSyncStatusKey tracks the snapshot sync status across restarts.
+	snapshotSyncStatusKey = []byte("SnapshotSyncStatus")
+
 	// txIndexTailKey tracks the oldest block whose transactions have been indexed.
 	txIndexTailKey = []byte("TransactionIndexTail")
 
 	// fastTxLookupLimitKey tracks the transaction lookup limit during fast sync.
 	fastTxLookupLimitKey = []byte("FastTransactionLookupLimit")
+
+	// badBlockKey tracks the list of bad blocks seen by local
+	badBlockKey = []byte("InvalidBlock")
+
+	// uncleanShutdownKey tracks the list of local crashes
+	uncleanShutdownKey = []byte("unclean-shutdown") // config prefix for the db
 
 	// Data item prefixes (use single byte to avoid mixing data types, avoid `i`, used for indexes).
 	headerPrefix       = []byte("h") // headerPrefix + num (uint64 big endian) + hash -> header
