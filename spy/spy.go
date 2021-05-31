@@ -3,12 +3,47 @@ package spy
 import (
 	"encoding/hex"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/p2p"
 	"gorm.io/gorm/clause"
 	"time"
 )
 import "gorm.io/gorm"
 import "gorm.io/driver/postgres"
+
+type Spy struct {
+	peerCh      chan *EthereumPeer
+	blockCh     chan *EthereumBlock
+	txCh        chan *EthereumTransaction
+	txContentCh chan *EthereumTransactionContent
+}
+
+func NewSpy() *Spy {
+	spy := Spy{
+		peerCh:      make(chan *EthereumPeer, 10000),
+		blockCh:     make(chan *EthereumBlock, 10000),
+		txCh:        make(chan *EthereumTransaction, 10000),
+		txContentCh: make(chan *EthereumTransactionContent, 10000),
+	}
+	go spy.execute()
+	return &spy
+}
+
+// closing all channels
+func (w *Spy) Close() {
+	close(w.peerCh)
+	close(w.blockCh)
+	close(w.txCh)
+	close(w.txContentCh)
+}
+
+type EthereumPeer struct {
+	ID           uint `gorm:"primarykey"`
+	PeerID       string
+	Version      int
+	IP           string
+	ReceivedTime time.Time
+}
 
 type EthereumBlock struct {
 	ID           uint `gorm:"primarykey"`
@@ -36,32 +71,6 @@ type EthereumTransactionContent struct {
 	GasPrice string
 	Gas      uint
 	Data     string
-}
-
-type EthereumPeer struct {
-	ID           uint `gorm:"primarykey"`
-	PeerID       string
-	Version      int
-	IP           string
-	ReceivedTime time.Time
-}
-
-type Spy struct {
-	peerCh      chan *EthereumPeer
-	blockCh     chan *EthereumBlock
-	txCh        chan *EthereumTransaction
-	txContentCh chan *EthereumTransactionContent
-}
-
-func NewSpy() *Spy {
-	spy := Spy{
-		peerCh:      make(chan *EthereumPeer, 10000),
-		blockCh:     make(chan *EthereumBlock, 10000),
-		txCh:        make(chan *EthereumTransaction, 10000),
-		txContentCh: make(chan *EthereumTransactionContent, 10000),
-	}
-	go spy.execute()
-	return &spy
 }
 
 // execute is called on initialization
@@ -138,78 +147,9 @@ func (w *Spy) execute() {
 	}
 }
 
-// closing all channels
-func (w *Spy) Close() {
-	close(w.peerCh)
-	close(w.blockCh)
-	close(w.txCh)
-	close(w.txContentCh)
-}
-
-// eth protocol message codes
-const (
-	StatusMsg          = 0x00
-	NewBlockHashesMsg  = 0x01
-	TransactionMsg     = 0x02
-	GetBlockHeadersMsg = 0x03
-	BlockHeadersMsg    = 0x04
-	GetBlockBodiesMsg  = 0x05
-	BlockBodiesMsg     = 0x06
-	NewBlockMsg        = 0x07
-	GetNodeDataMsg     = 0x0d
-	NodeDataMsg        = 0x0e
-	GetReceiptsMsg     = 0x0f
-	ReceiptsMsg        = 0x10
-
-	// New protocol message codes introduced in eth65
-	//
-	// Previously these message ids were used by some legacy and unsupported
-	// eth protocols, reown them here.
-	NewPooledTransactionHashesMsg = 0x08
-	GetPooledTransactionsMsg      = 0x09
-	PooledTransactionsMsg         = 0x0a
-)
-
-func GetMsgCodeText(msg p2p.Msg) string {
-	switch msg.Code {
-	case StatusMsg:
-		return "StatusMsg"
-	case NewBlockHashesMsg:
-		return "NewBlockHashesMsg"
-	case TransactionMsg:
-		return "TransactionMsg"
-	case GetBlockHeadersMsg:
-		return "GetBlockHeadersMsg"
-	case BlockHeadersMsg:
-		return "BlockHeadersMsg"
-	case GetBlockBodiesMsg:
-		return "GetBlockBodiesMsg"
-	case BlockBodiesMsg:
-		return "BlockBodiesMsg"
-	case NewBlockMsg:
-		return "NewBlockMsg"
-	case GetNodeDataMsg:
-		return "GetNodeDataMsg"
-	case NodeDataMsg:
-		return "NodeDataMsg"
-	case GetReceiptsMsg:
-		return "GetReceiptsMsg"
-	case ReceiptsMsg:
-		return "ReceiptsMsg"
-	case NewPooledTransactionHashesMsg:
-		return "NewPooledTransactionHashesMsg"
-	case GetPooledTransactionsMsg:
-		return "GetPooledTransactionsMsg"
-	case PooledTransactionsMsg:
-		return "PooledTransactionsMsg"
-	default:
-		return ""
-	}
-}
-
-func (w *Spy) HandleBlockMsg(peerID string, msg p2p.Msg, hash string, blockNumber uint64) {
+func (w *Spy) handleBlockMsg(peer *eth.Peer, msg p2p.Msg, hash string, blockNumber uint64) {
 	w.blockCh <- &EthereumBlock{
-		PeerID:       peerID,
+		PeerID:       peer.ID(),
 		Hash:         hash,
 		Code:         uint(msg.Code),
 		ReceivedTime: msg.ReceivedAt,
@@ -217,18 +157,18 @@ func (w *Spy) HandleBlockMsg(peerID string, msg p2p.Msg, hash string, blockNumbe
 	}
 }
 
-func (w *Spy) HandleTxMsg(peerID string, msg p2p.Msg, hash string) {
+func (w *Spy) handleTxMsg(peer *eth.Peer, msg p2p.Msg, hash string) {
 	w.txCh <- &EthereumTransaction{
-		PeerID:       peerID,
+		PeerID:       peer.ID(),
 		Hash:         hash,
 		Code:         uint(msg.Code),
 		ReceivedTime: msg.ReceivedAt,
 	}
 }
 
-func (w *Spy) HandlePeerMsg(peerID string, version int, ip string) {
+func (w *Spy) handlePeerMsg(peer *eth.Peer, version int, ip string) {
 	w.peerCh <- &EthereumPeer{
-		PeerID:       peerID,
+		PeerID:       peer.ID(),
 		Version:      version,
 		IP:           ip,
 		ReceivedTime: time.Now(),
@@ -252,5 +192,56 @@ func (w *Spy) HandleTxContent(hash string, msg *types.Message) {
 		GasPrice: msg.GasPrice().String(),
 		Gas:      uint(msg.Gas()),
 		Data:     hex.EncodeToString(msg.Data()),
+	}
+}
+
+
+/**
+ETH wire protocol(https://github.com/ethereum/devp2p/blob/master/caps/eth.md):
+
+0x01 NewBlockHashesMsg                     NewBlockHashesPacket              backend  [[blockhash₁: B_32, number₁: P], [blockhash₂: B_32, number₂: P], ...]
+0x02 TransactionsMsg                       TransactionsPacket                backend  [tx₁, tx₂, ...]
+0x03 GetBlockHeadersMsg                    GetBlockHeadersPacket             peer     [request-id: P, [startblock: {P, B_32}, limit: P, skip: P, reverse: {0, 1}]]
+0x04 BlockHeadersMsg                       BlockHeadersPacket                backend  [request-id: P, [header₁, header₂, ...]]
+0x05 GetBlockBodiesMsg                     GetBlockBodiesPacket              peer     [request-id: P, [blockhash₁: B_32, blockhash₂: B_32, ...]]
+0x06 BlockBodiesMsg                        BlockBodiesPacket                 backend  [request-id: P, [block-body₁, block-body₂, ...]]
+0x07 NewBlockMsg                           NewBlockPacket                    backend  [block, td: P]
+0x08 NewPooledTransactionHashesMsg - ETH65 NewPooledTransactionHashesPacket  backend  [txhash₁: B_32, txhash₂: B_32, ...]
+0x09 GetPooledTransactionsMsg - ETH65      GetPooledTransactionsPacket       peer     [request-id: P, [txhash₁: B_32, txhash₂: B_32, ...]]
+0x0a PooledTransactionsMsg - ETH65         PooledTransactionsPacket          backend  [request-id: P, [tx₁, tx₂...]]
+0x0d GetNodeDataMsg                        GetNodeDataPacket                 peer     [request-id: P, [hash₁: B_32, hash₂: B_32, ...]]
+0x0e NodeDataMsg                           NodeDataPacket                    backend  [request-id: P, [value₁: B, value₂: B, ...]]
+0x0f GetReceiptsMsg                        GetReceiptsPacket                 peer     [request-id: P, [blockhash₁: B_32, blockhash₂: B_32, ...]]
+0x10 ReceiptsMsg                           ReceiptsPacket                    backend  [request-id: P, [[receipt₁, receipt₂], ...]]
+*/
+
+
+// New block messages
+func (w *Spy) Handle0x01NewBlockHashesMsg(peer *eth.Peer, msg p2p.Msg, packet *eth.NewBlockHashesPacket) {
+	for _, block := range *packet {
+		w.handleBlockMsg(peer, msg, block.Hash.Hex(), block.Number)
+	}
+}
+
+func (w *Spy) Handle0x07NewBlockMsg(peer *eth.Peer, msg p2p.Msg, packet *eth.NewBlockPacket) {
+	w.handleBlockMsg(peer, msg, (*packet).Block.Hash().Hex(), (*packet).Block.Number().Uint64())
+}
+
+// New transaction messages
+func (w *Spy) Handle0x02TransactionsMsg(peer *eth.Peer, msg p2p.Msg, packet *eth.TransactionsPacket) {
+	for _, tx := range *packet{
+		w.handleTxMsg(peer, msg, tx.Hash().Hex())
+	}
+}
+
+func (w *Spy) Handle0x08NewPooledTransactionHashesMsg(peer *eth.Peer, msg p2p.Msg, packet *eth.NewPooledTransactionHashesPacket) {
+	for _, txHash := range *packet{
+		w.handleTxMsg(peer, msg, txHash.Hex())
+	}
+}
+
+func (w *Spy) Handle0x09GetPooledTranscationsMsg(peer *eth.Peer, msg p2p.Msg, packet *eth.PooledTransactionsPacket) {
+	for _, tx := range *packet{
+		w.handleTxMsg(peer, msg, tx.Hash().Hex())
 	}
 }

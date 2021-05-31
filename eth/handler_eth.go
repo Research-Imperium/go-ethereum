@@ -19,6 +19,7 @@ package eth
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/spy"
 	"math/big"
 	"sync/atomic"
 	"time"
@@ -36,6 +37,7 @@ import (
 // packets that are sent as replies or broadcasts.
 type ethHandler handler
 
+func (h *ethHandler) Spy() *spy.Spy               { return h.spy }
 func (h *ethHandler) Chain() *core.BlockChain     { return h.chain }
 func (h *ethHandler) StateBloom() *trie.SyncBloom { return h.stateBloom }
 func (h *ethHandler) TxPool() eth.TxPool          { return h.txpool }

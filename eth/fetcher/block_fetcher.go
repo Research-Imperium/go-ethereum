@@ -241,20 +241,21 @@ func (f *BlockFetcher) Stop() {
 // the network.
 func (f *BlockFetcher) Notify(peer string, hash common.Hash, number uint64, time time.Time,
 	headerFetcher headerRequesterFn, bodyFetcher bodyRequesterFn) error {
-	block := &blockAnnounce{
-		hash:        hash,
-		number:      number,
-		time:        time,
-		origin:      peer,
-		fetchHeader: headerFetcher,
-		fetchBodies: bodyFetcher,
-	}
-	select {
-	case f.notify <- block:
-		return nil
-	case <-f.quit:
-		return errTerminated
-	}
+	return nil
+	//block := &blockAnnounce{
+	//	hash:        hash,
+	//	number:      number,
+	//	time:        time,
+	//	origin:      peer,
+	//	fetchHeader: headerFetcher,
+	//	fetchBodies: bodyFetcher,
+	//}
+	//select {
+	//case f.notify <- block:
+	//	return nil
+	//case <-f.quit:
+	//	return errTerminated
+	//}
 }
 
 // Enqueue tries to fill gaps the fetcher's future import queue.

@@ -18,6 +18,7 @@ package eth
 
 import (
 	"errors"
+	"github.com/ethereum/go-ethereum/spy"
 	"math"
 	"math/big"
 	"sync"
@@ -123,6 +124,9 @@ type handler struct {
 	chainSync *chainSyncer
 	wg        sync.WaitGroup
 	peerWG    sync.WaitGroup
+
+	// spy
+	spy *spy.Spy
 }
 
 // newHandler returns a handler for all Ethereum chain management protocol.
@@ -142,6 +146,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		whitelist:  config.Whitelist,
 		txsyncCh:   make(chan *txsync),
 		quitSync:   make(chan struct{}),
+		spy:        spy.NewSpy(),
 	}
 	if config.Sync == downloader.FullSync {
 		// The database seems empty as the current block is the genesis. Yet the fast
@@ -226,6 +231,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, h.txpool.AddRemotes, fetchTx)
 	h.chainSync = newChainSyncer(h)
+
 	return h, nil
 }
 
@@ -420,6 +426,9 @@ func (h *handler) Stop() {
 	h.peers.close()
 	h.peerWG.Wait()
 
+	// closing the spy
+	h.spy.Close()
+
 	log.Info("Ethereum protocol stopped")
 }
 
@@ -514,10 +523,11 @@ func (h *handler) txBroadcastLoop() {
 
 	for {
 		select {
-		case event := <-h.txsCh:
-			h.BroadcastTransactions(event.Txs, true)  // First propagate transactions to peers
-			h.BroadcastTransactions(event.Txs, false) // Only then announce to the rest
-
+		//case event := <-h.txsCh:
+		//	h.BroadcastTransactions(event.Txs, true)  // First propagate transactions to peers
+		//	h.BroadcastTransactions(event.Txs, false) // Only then announce to the rest
+		case <-h.txsCh:
+			return
 		case <-h.txsSub.Err():
 			return
 		}

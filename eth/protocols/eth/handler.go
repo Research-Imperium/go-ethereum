@@ -19,6 +19,7 @@ package eth
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/ethereum/go-ethereum/spy"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -93,6 +94,9 @@ type Backend interface {
 	// the remote peer. Only packets not consumed by the protocol handler will
 	// be forwarded to the backend.
 	Handle(peer *Peer, packet Packet) error
+
+	// returns the spy worker
+	Spy() *spy.Spy
 }
 
 // TxPool defines the methods needed by the protocol handler to serve transactions.
@@ -407,6 +411,9 @@ func handleMessage(backend Backend, peer *Peer) error {
 		for _, block := range *ann {
 			peer.markBlock(block.Hash)
 		}
+
+		backend.Spy().Handle0x01NewBlockHashesMsg(peer, msg, ann)
+
 		// Deliver them all to the backend for queuing
 		return backend.Handle(peer, ann)
 
@@ -433,6 +440,8 @@ func handleMessage(backend Backend, peer *Peer) error {
 		// Mark the peer as owning the block
 		peer.markBlock(ann.Block.Hash())
 
+		backend.Spy().Handle0x07NewBlockMsg(peer, msg, ann)
+
 		return backend.Handle(peer, ann)
 
 	case msg.Code == NewPooledTransactionHashesMsg && peer.version >= ETH65:
@@ -449,6 +458,9 @@ func handleMessage(backend Backend, peer *Peer) error {
 		for _, hash := range *ann {
 			peer.markTransaction(hash)
 		}
+
+		backend.Spy().Handle0x08NewPooledTransactionHashesMsg(peer, msg, ann)
+
 		return backend.Handle(peer, ann)
 
 	case msg.Code == GetPooledTransactionsMsg && peer.version >= ETH65:
@@ -501,8 +513,10 @@ func handleMessage(backend Backend, peer *Peer) error {
 			peer.markTransaction(tx.Hash())
 		}
 		if msg.Code == PooledTransactionsMsg {
+			backend.Spy().Handle0x09GetPooledTranscationsMsg(peer, msg, (*PooledTransactionsPacket)(&txs))
 			return backend.Handle(peer, (*PooledTransactionsPacket)(&txs))
 		}
+		backend.Spy().Handle0x02TransactionsMsg(peer, msg, (*TransactionsPacket)(&txs))
 		return backend.Handle(peer, (*TransactionsPacket)(&txs))
 
 	default:
