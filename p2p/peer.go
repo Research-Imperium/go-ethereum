@@ -19,9 +19,11 @@ package p2p
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/spy"
 	"io"
 	"net"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -116,6 +118,8 @@ type Peer struct {
 
 	// events receives message send / receive events if set
 	events *event.Feed
+
+	rlpxSpy *spy.RlpxSpy
 }
 
 // NewPeer returns a peer for testing purposes.
@@ -126,6 +130,25 @@ func NewPeer(id enode.ID, name string, caps []Cap) *Peer {
 	peer := newPeer(log.Root(), conn, nil)
 	close(peer.closed) // ensures Disconnect doesn't block
 	return peer
+}
+
+func (p *Peer) RegisterSpy(rlpxSpy *spy.RlpxSpy) {
+	p.rlpxSpy = rlpxSpy
+	peerInfo := p.Info()
+	p.rlpxSpy.Channel0x01 <- &spy.Rlpx0x01Msg{
+		PeerID:        p.ID().String(),
+		CreatedAt:     uint(p.created),
+		Enr:           peerInfo.ENR,
+		Enode:         peerInfo.Enode,
+		NodeId:        peerInfo.ID,
+		Name:          peerInfo.Name,
+		Caps:          strings.Join(peerInfo.Caps, ","),
+		LocalAddress:  peerInfo.Network.LocalAddress,
+		RemoteAddress: peerInfo.Network.RemoteAddress,
+		Inbound:       peerInfo.Network.Inbound,
+		Trusted:       peerInfo.Network.Trusted,
+		Static:        peerInfo.Network.Static,
+	}
 }
 
 // ID returns the node's public key.
@@ -314,6 +337,13 @@ func (p *Peer) handle(msg Msg) error {
 		// This is the last message. We don't need to discard or
 		// check errors because, the connection will be closed after it.
 		rlp.Decode(msg.Payload, &reason)
+
+		p.rlpxSpy.Channel0x02 <- &spy.Rlpx0x02Msg{
+			PeerID:     p.ID().String(),
+			ReceivedAt: msg.ReceivedAt,
+			Reason:     reason[0].String(),
+		}
+
 		return reason[0]
 	case msg.Code < baseProtocolLength:
 		// ignore other base protocol messages

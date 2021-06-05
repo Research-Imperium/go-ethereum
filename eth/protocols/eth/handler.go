@@ -18,6 +18,7 @@ package eth
 
 import (
 	"fmt"
+	"github.com/ethereum/go-ethereum/spy"
 	"math/big"
 	"time"
 
@@ -92,6 +93,9 @@ type Backend interface {
 	// the remote peer. Only packets not consumed by the protocol handler will
 	// be forwarded to the backend.
 	Handle(peer *Peer, packet Packet) error
+
+	// Return the spy worker for WIRE
+	WireSpy() *spy.WireSpy
 }
 
 // TxPool defines the methods needed by the protocol handler to serve transactions.
@@ -103,6 +107,9 @@ type TxPool interface {
 // MakeProtocols constructs the P2P protocol definitions for `eth`.
 func MakeProtocols(backend Backend, network uint64, dnsdisc enode.Iterator) []p2p.Protocol {
 	protocols := make([]p2p.Protocol, len(ProtocolVersions))
+
+	spy := spy.NewRlpxSpy(1000)
+
 	for i, version := range ProtocolVersions {
 		version := version // Closure
 
@@ -112,6 +119,7 @@ func MakeProtocols(backend Backend, network uint64, dnsdisc enode.Iterator) []p2
 			Length:  protocolLengths[version],
 			Run: func(p *p2p.Peer, rw p2p.MsgReadWriter) error {
 				peer := NewPeer(version, p, rw, backend.TxPool())
+				peer.RegisterSpy(spy)
 				defer peer.Close()
 
 				return backend.RunPeer(peer, func(peer *Peer) error {

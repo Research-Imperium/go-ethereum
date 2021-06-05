@@ -19,11 +19,11 @@ package eth
 import (
 	"encoding/json"
 	"fmt"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/spy"
 	"github.com/ethereum/go-ethereum/trie"
 )
 
@@ -281,7 +281,16 @@ func handleNewBlockhashes(backend Backend, msg Decoder, peer *Peer) error {
 	// Mark the hashes as present at the remote node
 	for _, block := range *ann {
 		peer.markBlock(block.Hash)
+
+		// Save to spy node
+		backend.WireSpy().Channel0x01 <- &spy.Wire0x01Msg{
+			PeerID:      peer.ID(),
+			ReceivedAt:  msg.Time(),
+			BlockHash:   block.Hash.Hex(),
+			BlockNumber: uint(block.Number),
+		}
 	}
+
 	// Deliver them all to the backend for queuing
 	return backend.Handle(peer, ann)
 }
@@ -308,6 +317,17 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 
 	// Mark the peer as owning the block
 	peer.markBlock(ann.Block.Hash())
+
+	backend.WireSpy().Channel0x07 <- &spy.Wire0x07Msg{
+		PeerID:      peer.ID(),
+		ReceivedAt:  msg.Time(),
+		BlockHash:   ann.Block.Hash().Hex(),
+		BlockNumber: uint(ann.Block.Number().Uint64()),
+	}
+
+	for _, tx := range ann.Block.Transactions() {
+		backend.WireSpy().ChannelTransaction <- tx
+	}
 
 	return backend.Handle(peer, ann)
 }
@@ -338,6 +358,13 @@ func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 	if err := msg.Decode(res); err != nil {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
+
+	for _, blockBodies := range (*res) {
+		for _, tx := range blockBodies.Transactions {
+			backend.WireSpy().ChannelTransaction <- tx
+		}
+	}
+
 	return backend.Handle(peer, res)
 }
 
@@ -348,6 +375,12 @@ func handleBlockBodies66(backend Backend, msg Decoder, peer *Peer) error {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
 	requestTracker.Fulfil(peer.id, peer.version, BlockBodiesMsg, res.RequestId)
+
+	for _, blockBodies := range (*res).BlockBodiesPacket {
+		for _, tx := range blockBodies.Transactions {
+			backend.WireSpy().ChannelTransaction <- tx
+		}
+	}
 
 	return backend.Handle(peer, &res.BlockBodiesPacket)
 }
@@ -405,6 +438,12 @@ func handleNewPooledTransactionHashes(backend Backend, msg Decoder, peer *Peer) 
 	// Schedule all the unknown hashes for retrieval
 	for _, hash := range *ann {
 		peer.markTransaction(hash)
+
+		backend.WireSpy().Channel0x08 <- &spy.Wire0x08Msg{
+			PeerID:     peer.ID(),
+			ReceivedAt: msg.Time(),
+			TxHash:     hash.Hex(),
+		}
 	}
 	return backend.Handle(peer, ann)
 }
@@ -472,7 +511,16 @@ func handleTransactions(backend Backend, msg Decoder, peer *Peer) error {
 		if tx == nil {
 			return fmt.Errorf("%w: transaction %d is nil", errDecode, i)
 		}
+
 		peer.markTransaction(tx.Hash())
+
+		backend.WireSpy().Channel0x02 <- &spy.Wire0x02Msg{
+			PeerID: peer.ID(),
+			ReceivedAt: msg.Time(),
+			TxHash: tx.Hash().Hex(),
+		}
+
+		backend.WireSpy().ChannelTransaction <- tx
 	}
 	return backend.Handle(peer, &txs)
 }
@@ -492,6 +540,10 @@ func handlePooledTransactions(backend Backend, msg Decoder, peer *Peer) error {
 		if tx == nil {
 			return fmt.Errorf("%w: transaction %d is nil", errDecode, i)
 		}
+
+		// Write the transaction to our database
+		backend.WireSpy().ChannelTransaction <- tx
+
 		peer.markTransaction(tx.Hash())
 	}
 	return backend.Handle(peer, &txs)
@@ -512,6 +564,10 @@ func handlePooledTransactions66(backend Backend, msg Decoder, peer *Peer) error 
 		if tx == nil {
 			return fmt.Errorf("%w: transaction %d is nil", errDecode, i)
 		}
+
+		// Write the transaction to our database
+		backend.WireSpy().ChannelTransaction <- tx
+
 		peer.markTransaction(tx.Hash())
 	}
 	requestTracker.Fulfil(peer.id, peer.version, PooledTransactionsMsg, txs.RequestId)

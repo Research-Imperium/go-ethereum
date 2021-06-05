@@ -18,8 +18,7 @@ package eth
 
 import (
 	"errors"
-	"math"
-	"math/big"
+	"github.com/ethereum/go-ethereum/spy"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -123,6 +122,8 @@ type handler struct {
 	chainSync *chainSyncer
 	wg        sync.WaitGroup
 	peerWG    sync.WaitGroup
+
+	wireSpy *spy.WireSpy
 }
 
 // newHandler returns a handler for all Ethereum chain management protocol.
@@ -142,6 +143,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		whitelist:  config.Whitelist,
 		txsyncCh:   make(chan *txsync),
 		quitSync:   make(chan struct{}),
+		wireSpy:    spy.NewWireSpy(10000),
 	}
 	if config.Sync == downloader.FullSync {
 		// The database seems empty as the current block is the genesis. Yet the fast
@@ -430,34 +432,38 @@ func (h *handler) Stop() {
 // BroadcastBlock will either propagate a block to a subset of its peers, or
 // will only announce its availability (depending what's requested).
 func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
-	hash := block.Hash()
-	peers := h.peers.peersWithoutBlock(hash)
 
-	// If propagation is requested, send to a subset of the peer
-	if propagate {
-		// Calculate the TD of the block (it's not imported yet, so block.Td is not valid)
-		var td *big.Int
-		if parent := h.chain.GetBlock(block.ParentHash(), block.NumberU64()-1); parent != nil {
-			td = new(big.Int).Add(block.Difficulty(), h.chain.GetTd(block.ParentHash(), block.NumberU64()-1))
-		} else {
-			log.Error("Propagating dangling block", "number", block.Number(), "hash", hash)
-			return
-		}
-		// Send the block to a subset of our peers
-		transfer := peers[:int(math.Sqrt(float64(len(peers))))]
-		for _, peer := range transfer {
-			peer.AsyncSendNewBlock(block, td)
-		}
-		log.Trace("Propagated block", "hash", hash, "recipients", len(transfer), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
-		return
-	}
-	// Otherwise if the block is indeed in out own chain, announce it
-	if h.chain.HasBlock(hash, block.NumberU64()) {
-		for _, peer := range peers {
-			peer.AsyncSendNewBlockHash(block)
-		}
-		log.Trace("Announced block", "hash", hash, "recipients", len(peers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
-	}
+	// disable the broadcast
+	log.Trace("Disable the block broadcast", "number", block.Number(), "hash", block.Hash().Hex())
+
+	//hash := block.Hash()
+	//peers := h.peers.peersWithoutBlock(hash)
+	//
+	//// If propagation is requested, send to a subset of the peer
+	//if propagate {
+	//	// Calculate the Difficulty of the block (it's not imported yet, so block.Td is not valid)
+	//	var td *big.Int
+	//	if parent := h.chain.GetBlock(block.ParentHash(), block.NumberU64()-1); parent != nil {
+	//		td = new(big.Int).Add(block.Difficulty(), h.chain.GetTd(block.ParentHash(), block.NumberU64()-1))
+	//	} else {
+	//		log.Error("Propagating dangling block", "number", block.Number(), "hash", hash)
+	//		return
+	//	}
+	//	// Send the block to a subset of our peers
+	//	transfer := peers[:int(math.Sqrt(float64(len(peers))))]
+	//	for _, peer := range transfer {
+	//		peer.AsyncSendNewBlock(block, td)
+	//	}
+	//	log.Trace("Propagated block", "hash", hash, "recipients", len(transfer), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
+	//	return
+	//}
+	//// Otherwise if the block is indeed in out own chain, announce it
+	//if h.chain.HasBlock(hash, block.NumberU64()) {
+	//	for _, peer := range peers {
+	//		peer.AsyncSendNewBlockHash(block)
+	//	}
+	//	log.Trace("Announced block", "hash", hash, "recipients", len(peers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
+	//}
 }
 
 // BroadcastTransactions will propagate a batch of transactions
@@ -465,42 +471,46 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 // - And, separately, as announcements to all peers which are not known to
 // already have the given transaction.
 func (h *handler) BroadcastTransactions(txs types.Transactions) {
-	var (
-		annoCount   int // Count of announcements made
-		annoPeers   int
-		directCount int // Count of the txs sent directly to peers
-		directPeers int // Count of the peers that were sent transactions directly
 
-		txset = make(map[*ethPeer][]common.Hash) // Set peer->hash to transfer directly
-		annos = make(map[*ethPeer][]common.Hash) // Set peer->hash to announce
+	// disable the boradcast
+	log.Trace("Disable the tx broadcast")
 
-	)
-	// Broadcast transactions to a batch of peers not knowing about it
-	for _, tx := range txs {
-		peers := h.peers.peersWithoutTransaction(tx.Hash())
-		// Send the tx unconditionally to a subset of our peers
-		numDirect := int(math.Sqrt(float64(len(peers))))
-		for _, peer := range peers[:numDirect] {
-			txset[peer] = append(txset[peer], tx.Hash())
-		}
-		// For the remaining peers, send announcement only
-		for _, peer := range peers[numDirect:] {
-			annos[peer] = append(annos[peer], tx.Hash())
-		}
-	}
-	for peer, hashes := range txset {
-		directPeers++
-		directCount += len(hashes)
-		peer.AsyncSendTransactions(hashes)
-	}
-	for peer, hashes := range annos {
-		annoPeers++
-		annoCount += len(hashes)
-		peer.AsyncSendPooledTransactionHashes(hashes)
-	}
-	log.Debug("Transaction broadcast", "txs", len(txs),
-		"announce packs", annoPeers, "announced hashes", annoCount,
-		"tx packs", directPeers, "broadcast txs", directCount)
+	//var (
+	//	annoCount   int // Count of announcements made
+	//	annoPeers   int
+	//	directCount int // Count of the txs sent directly to peers
+	//	directPeers int // Count of the peers that were sent transactions directly
+	//
+	//	txset = make(map[*ethPeer][]common.Hash) // Set peer->hash to transfer directly
+	//	annos = make(map[*ethPeer][]common.Hash) // Set peer->hash to announce
+	//
+	//)
+	//// Broadcast transactions to a batch of peers not knowing about it
+	//for _, tx := range txs {
+	//	peers := h.peers.peersWithoutTransaction(tx.Hash())
+	//	// Send the tx unconditionally to a subset of our peers
+	//	numDirect := int(math.Sqrt(float64(len(peers))))
+	//	for _, peer := range peers[:numDirect] {
+	//		txset[peer] = append(txset[peer], tx.Hash())
+	//	}
+	//	// For the remaining peers, send announcement only
+	//	for _, peer := range peers[numDirect:] {
+	//		annos[peer] = append(annos[peer], tx.Hash())
+	//	}
+	//}
+	//for peer, hashes := range txset {
+	//	directPeers++
+	//	directCount += len(hashes)
+	//	peer.AsyncSendTransactions(hashes)
+	//}
+	//for peer, hashes := range annos {
+	//	annoPeers++
+	//	annoCount += len(hashes)
+	//	peer.AsyncSendPooledTransactionHashes(hashes)
+	//}
+	//log.Debug("Transaction broadcast", "txs", len(txs),
+	//	"announce packs", annoPeers, "announced hashes", annoCount,
+	//	"tx packs", directPeers, "broadcast txs", directCount)
 }
 
 // minedBroadcastLoop sends mined blocks to connected peers.

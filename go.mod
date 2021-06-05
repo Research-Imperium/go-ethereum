@@ -44,8 +44,8 @@ require (
 	github.com/julienschmidt/httprouter v1.2.0
 	github.com/karalabe/usb v0.0.0-20190919080040-51dc0efba356
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/mattn/go-colorable v0.1.0
-	github.com/mattn/go-isatty v0.0.5-0.20180830101745-3fb116b82035
+	github.com/mattn/go-colorable v0.1.6
+	github.com/mattn/go-isatty v0.0.12
 	github.com/naoina/go-stringutil v0.1.0 // indirect
 	github.com/naoina/toml v0.1.2-0.20170918210437-9fafd6967416
 	github.com/olekukonko/tablewriter v0.0.5
@@ -67,5 +67,7 @@ require (
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce
 	gopkg.in/olebedev/go-duktape.v3 v3.0.0-20200619000410-60c24ae608a6
 	gopkg.in/urfave/cli.v1 v1.20.0
+	gorm.io/driver/postgres v1.1.0
+	gorm.io/gorm v1.21.10
 	gotest.tools v2.2.0+incompatible // indirect
 )

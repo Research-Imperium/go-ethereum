@@ -19,6 +19,7 @@ package eth
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/spy"
 	"math/big"
 	"sync/atomic"
 	"time"
@@ -35,6 +36,8 @@ import (
 // ethHandler implements the eth.Backend interface to handle the various network
 // packets that are sent as replies or broadcasts.
 type ethHandler handler
+
+func (h *ethHandler) WireSpy() *spy.WireSpy {return h.wireSpy }
 
 func (h *ethHandler) Chain() *core.BlockChain     { return h.chain }
 func (h *ethHandler) StateBloom() *trie.SyncBloom { return h.stateBloom }
@@ -204,7 +207,7 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, block *types.Block, td
 	h.blockFetcher.Enqueue(peer.ID(), block)
 
 	// Assuming the block is importable by the peer, but possibly not yet done so,
-	// calculate the head hash and TD that the peer truly must have.
+	// calculate the head hash and Difficulty that the peer truly must have.
 	var (
 		trueHead = block.ParentHash()
 		trueTD   = new(big.Int).Sub(td, block.Difficulty())
