@@ -16,20 +16,20 @@ import (
 ETH wire protocol(https://github.com/ethereum/devp2p/blob/master/caps/eth.md)
 EIP-2481 with request ID(https://eips.ethereum.org/EIPS/eip-2481)
 
-0x01 NewBlockHashesMsg                     NewBlockHashesPacket              backend  [[blockhash₁: B_32, number₁: P], [blockhash₂: B_32, number₂: P], ...]
-0x02 TransactionsMsg                       TransactionsPacket                backend  [tx₁, tx₂, ...]
-0x03 GetBlockHeadersMsg                    GetBlockHeadersPacket             peer     [request-id: P, [startblock: {P, B_32}, limit: P, skip: P, reverse: {0, 1}]]
-0x04 BlockHeadersMsg                       BlockHeadersPacket                backend  [request-id: P, [header₁, header₂, ...]]
-0x05 GetBlockBodiesMsg                     GetBlockBodiesPacket              peer     [request-id: P, [blockhash₁: B_32, blockhash₂: B_32, ...]]
-0x06 BlockBodiesMsg                        BlockBodiesPacket                 backend  [request-id: P, [block-body₁, block-body₂, ...]]
-0x07 NewBlockMsg                           NewBlockPacket                    backend  [block, td: P]
-0x08 NewPooledTransactionHashesMsg - ETH65 NewPooledTransactionHashesPacket  backend  [txhash₁: B_32, txhash₂: B_32, ...]
-0x09 GetPooledTransactionsMsg - ETH65      GetPooledTransactionsPacket       peer     [request-id: P, [txhash₁: B_32, txhash₂: B_32, ...]]
-0x0a PooledTransactionsMsg - ETH65         PooledTransactionsPacket          backend  [request-id: P, [tx₁, tx₂...]]
-0x0d GetNodeDataMsg                        GetNodeDataPacket                 peer     [request-id: P, [hash₁: B_32, hash₂: B_32, ...]]
-0x0e NodeDataMsg                           NodeDataPacket                    backend  [request-id: P, [value₁: B, value₂: B, ...]]
-0x0f GetReceiptsMsg                        GetReceiptsPacket                 peer     [request-id: P, [blockhash₁: B_32, blockhash₂: B_32, ...]]
-0x10 ReceiptsMsg                           ReceiptsPacket                    backend  [request-id: P, [[receipt₁, receipt₂], ...]]
+0x01 NewBlockHashesMsg                                NewBlockHashesPacket              backend  [[blockhash₁: B_32, number₁: P], [blockhash₂: B_32, number₂: P], ...]
+0x02 TransactionsMsg                                  TransactionsPacket                backend  [tx₁, tx₂, ...]
+0x03 GetBlockHeadersMsg (Never Receive)               GetBlockHeadersPacket             peer     [request-id: P, [startblock: {P, B_32}, limit: P, skip: P, reverse: {0, 1}]]
+0x04 BlockHeadersMsg                                  BlockHeadersPacket                backend  [request-id: P, [header₁, header₂, ...]]
+0x05 GetBlockBodiesMsg (Never Receive)                GetBlockBodiesPacket              peer     [request-id: P, [blockhash₁: B_32, blockhash₂: B_32, ...]]
+0x06 BlockBodiesMsg                                   BlockBodiesPacket                 backend  [request-id: P, [block-body₁, block-body₂, ...]]
+0x07 NewBlockMsg                                      NewBlockPacket                    backend  [block, td: P]
+0x08 NewPooledTransactionHashesMsg - ETH65            NewPooledTransactionHashesPacket  backend  [txhash₁: B_32, txhash₂: B_32, ...]
+0x09 GetPooledTransactionsMsg - ETH65 (Never Receive) GetPooledTransactionsPacket       peer     [request-id: P, [txhash₁: B_32, txhash₂: B_32, ...]]
+0x0a PooledTransactionsMsg - ETH65                    PooledTransactionsPacket          backend  [request-id: P, [tx₁, tx₂...]]
+0x0d GetNodeDataMsg                                   GetNodeDataPacket                 peer     [request-id: P, [hash₁: B_32, hash₂: B_32, ...]]
+0x0e NodeDataMsg                                      NodeDataPacket                    backend  [request-id: P, [value₁: B, value₂: B, ...]]
+0x0f GetReceiptsMsg                                   GetReceiptsPacket                 peer     [request-id: P, [blockhash₁: B_32, blockhash₂: B_32, ...]]
+0x10 ReceiptsMsg                                      ReceiptsPacket                    backend  [request-id: P, [[receipt₁, receipt₂], ...]]
 */
 
 type Wire0x01Msg struct {

@@ -338,6 +338,10 @@ func (p *Peer) handle(msg Msg) error {
 		// check errors because, the connection will be closed after it.
 		rlp.Decode(msg.Payload, &reason)
 
+		log.Info("02Msg", "PeerID", p.ID().String())
+		log.Info("02Msg", "ReceivedAt", msg.ReceivedAt)
+		log.Info("02Msg", "Reason", reason[0].String())
+
 		p.rlpxSpy.Channel0x02 <- &spy.Rlpx0x02Msg{
 			PeerID:     p.ID().String(),
 			ReceivedAt: msg.ReceivedAt,
