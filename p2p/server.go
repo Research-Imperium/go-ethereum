@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/spy"
 	"net"
 	"sort"
 	"sync"
@@ -197,6 +198,8 @@ type Server struct {
 
 	// State of run loop and listenLoop.
 	inboundHistory expHeap
+
+	RlpxSpy *spy.RlpxSpy
 }
 
 type peerOpFunc func(map[enode.ID]*Peer)
@@ -1014,6 +1017,7 @@ func (srv *Server) checkpoint(c *conn, stage chan<- *conn) error {
 
 func (srv *Server) launchPeer(c *conn) *Peer {
 	p := newPeer(srv.log, c, srv.Protocols)
+	p.RegisterSpy(srv.RlpxSpy)
 	if srv.EnableMsgEvents {
 		// If message events are enabled, pass the peerFeed
 		// to the peer.

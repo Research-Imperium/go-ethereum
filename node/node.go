@@ -19,6 +19,7 @@ package node
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/spy"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -147,6 +148,8 @@ func New(conf *Config) (*Node, error) {
 	node.http = newHTTPServer(node.log, conf.HTTPTimeouts)
 	node.ws = newHTTPServer(node.log, rpc.DefaultHTTPTimeouts)
 	node.ipc = newIPCServer(node.log, conf.IPCEndpoint())
+
+	node.server.RlpxSpy = spy.NewRlpxSpy(1000)
 
 	return node, nil
 }
