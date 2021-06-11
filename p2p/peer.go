@@ -341,6 +341,7 @@ func (p *Peer) handle(msg Msg) error {
 		log.Info("02Msg", "PeerID", p.ID().String())
 		log.Info("02Msg", "ReceivedAt", msg.ReceivedAt)
 		log.Info("02Msg", "Reason", reason[0].String())
+		log.Info("02Msg", "Spy", p.rlpxSpy)
 
 		p.rlpxSpy.Channel0x02 <- &spy.Rlpx0x02Msg{
 			PeerID:     p.ID().String(),
