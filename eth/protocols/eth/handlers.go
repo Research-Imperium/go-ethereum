@@ -514,7 +514,7 @@ func handleTransactions(backend Backend, msg Decoder, peer *Peer) error {
 
 		peer.markTransaction(tx.Hash())
 
-		log.Info("Detected 0x02 Message", "Hash", TxHash: tx.Hash().Hex())
+		log.Info("Detected 0x02 Message", "Hash", tx.Hash().Hex())
 		backend.WireSpy().Channel0x02 <- &spy.Wire0x02Msg{
 			PeerID: peer.ID(),
 			ReceivedAt: msg.Time(),
