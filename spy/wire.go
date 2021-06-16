@@ -8,8 +8,11 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
+	"os"
 	"time"
+	golanglog "log"
 )
 
 /**
@@ -77,11 +80,11 @@ type Transaction struct {
 }
 
 type WireSpy struct {
-	Channel0x01 chan *Wire0x01Msg
-	Channel0x02 chan *Wire0x02Msg
-	Channel0x07 chan *Wire0x07Msg
-	Channel0x08 chan *Wire0x08Msg
-	ChannelTransaction      chan *types.Transaction
+	Channel0x01        chan *Wire0x01Msg
+	Channel0x02        chan *Wire0x02Msg
+	Channel0x07        chan *Wire0x07Msg
+	Channel0x08        chan *Wire0x08Msg
+	ChannelTransaction chan *types.Transaction
 	// signer used to translate tx to message
 	signer types.Signer
 }
@@ -96,11 +99,11 @@ type WireSpy struct {
 
 func NewWireSpy(channelSize int) *WireSpy {
 	spy := WireSpy{
-		Channel0x01:             make(chan *Wire0x01Msg, channelSize),
-		Channel0x02:             make(chan *Wire0x02Msg, channelSize),
-		Channel0x07:             make(chan *Wire0x07Msg, channelSize),
-		Channel0x08:             make(chan *Wire0x08Msg, channelSize),
-		ChannelTransaction:      make(chan *types.Transaction, channelSize),
+		Channel0x01:        make(chan *Wire0x01Msg, channelSize),
+		Channel0x02:        make(chan *Wire0x02Msg, channelSize),
+		Channel0x07:        make(chan *Wire0x07Msg, channelSize),
+		Channel0x08:        make(chan *Wire0x08Msg, channelSize),
+		ChannelTransaction: make(chan *types.Transaction, channelSize),
 
 		signer: types.LatestSigner(params.MainnetChainConfig),
 	}
@@ -124,7 +127,13 @@ func (w *WireSpy) execute() {
 		postgres.Open(dsn),
 		&gorm.Config{
 			NamingStrategy: schema.NamingStrategy{TablePrefix: "ethereum_"},
-		})
+			Logger: logger.New(golanglog.New(os.Stdout, "\r\n", golanglog.LstdFlags), logger.Config{
+				SlowThreshold: 400 * time.Millisecond,
+				LogLevel:      logger.Warn,
+				Colorful:      true,
+			}),
+		},
+	)
 
 	if err != nil {
 		panic("failed to connect database")

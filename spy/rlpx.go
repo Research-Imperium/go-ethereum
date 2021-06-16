@@ -4,7 +4,10 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
+	golanglog "log"
+	"os"
 	"time"
 )
 
@@ -100,6 +103,11 @@ func (r *RlpxSpy) execute() {
 		postgres.Open(dsn),
 		&gorm.Config{
 			NamingStrategy: schema.NamingStrategy{TablePrefix: "ethereum_"},
+			Logger: logger.New(golanglog.New(os.Stdout, "\r\n", golanglog.LstdFlags), logger.Config{
+				SlowThreshold: 400 * time.Millisecond,
+				LogLevel:      logger.Warn,
+				Colorful:      true,
+			}),
 		})
 
 	if err != nil {
